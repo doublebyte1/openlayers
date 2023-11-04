@@ -5,7 +5,7 @@
 import EventTarget from '../events/Target.js';
 import EventType from '../events/EventType.js';
 import ImageState from '../ImageState.js';
-import {asString} from '../color.js';
+import {asArray, asString} from '../color.js';
 import {createCanvasContext2D} from '../dom.js';
 import {decodeFallback} from '../Image.js';
 import {shared as iconImageCache} from './IconImageCache.js';
@@ -251,22 +251,28 @@ class IconImage extends EventTarget {
     }
 
     const image = this.image_;
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.ceil(image.width * pixelRatio);
-    canvas.height = Math.ceil(image.height * pixelRatio);
+    const width = Math.ceil(image.width * pixelRatio);
+    const height = Math.ceil(image.height * pixelRatio);
+    const ctx = createCanvasContext2D(width, height);
 
-    const ctx = canvas.getContext('2d');
     ctx.scale(pixelRatio, pixelRatio);
     ctx.drawImage(image, 0, 0);
 
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = asString(this.color_);
-    ctx.fillRect(0, 0, canvas.width / pixelRatio, canvas.height / pixelRatio);
+    // double any non-zero alpha until 100%
+    for (let i = 0; i < 8; ++i) {
+      ctx.drawImage(ctx.canvas, 0, 0, width / pixelRatio, height / pixelRatio);
+    }
 
+    const color = asArray(this.color_);
+    ctx.fillStyle = asString(color.slice(0, 3));
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillRect(0, 0, width / pixelRatio, height / pixelRatio);
+
+    ctx.globalAlpha = color[3];
     ctx.globalCompositeOperation = 'destination-in';
     ctx.drawImage(image, 0, 0);
 
-    this.canvas_[pixelRatio] = canvas;
+    this.canvas_[pixelRatio] = ctx.canvas;
   }
 
   /**
