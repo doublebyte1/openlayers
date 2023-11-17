@@ -258,20 +258,45 @@ class IconImage extends EventTarget {
     ctx.scale(pixelRatio, pixelRatio);
     ctx.drawImage(image, 0, 0);
 
-    // double any non-zero alpha until 100%
-    for (let i = 0; i < 8; ++i) {
-      ctx.drawImage(ctx.canvas, 0, 0, width / pixelRatio, height / pixelRatio);
-    }
-
     const color = asArray(this.color_);
-    ctx.fillStyle = asString(color.slice(0, 3));
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.fillRect(0, 0, width / pixelRatio, height / pixelRatio);
+    const alpha = color[3];
 
-    ctx.globalAlpha = color[3];
-    ctx.globalCompositeOperation = 'destination-in';
-    ctx.drawImage(image, 0, 0);
+    if (!this.isTainted_()) {
+      // Using ImageData is faster when canvas is not tainted
+      const imgData = ctx.getImageData(0, 0, width, height);
+      const data = imgData.data;
+      const r = color[0] / 255.0;
+      const g = color[1] / 255.0;
+      const b = color[2] / 255.0;
 
+      for (let i = 0, ii = data.length; i < ii; i += 4) {
+        data[i] *= r;
+        data[i + 1] *= g;
+        data[i + 2] *= b;
+        data[i + 3] *= alpha;
+      }
+      ctx.putImageData(imgData, 0, 0);
+    } else {
+      // Tainted canvas requires multiple drawImage calls to achieve same result
+      // Double any non-zero alpha until 100%
+      for (let i = 0; i < 8; ++i) {
+        ctx.drawImage(
+          ctx.canvas,
+          0,
+          0,
+          width / pixelRatio,
+          height / pixelRatio,
+        );
+      }
+
+      ctx.fillStyle = asString(color.slice(0, 3));
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillRect(0, 0, width / pixelRatio, height / pixelRatio);
+
+      ctx.globalAlpha = alpha;
+      ctx.globalCompositeOperation = 'destination-in';
+      ctx.drawImage(image, 0, 0);
+    }
     this.canvas_[pixelRatio] = ctx.canvas;
   }
 
