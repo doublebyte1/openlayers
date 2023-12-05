@@ -71,9 +71,15 @@ import {
   clear as clearTransformFuncs,
   get as getTransformFunc,
 } from './proj/transforms.js';
+import {
+  apply as applyMatrix,
+  create as createMatrix,
+  invert as invertMatrix,
+} from './transform.js';
 import {applyTransform, getWidth} from './extent.js';
 import {clamp, modulo} from './math.js';
 import {equals, getWorldsAway} from './coordinate.js';
+import {equals as equalsMatrix} from './array.js';
 import {getDistance} from './sphere.js';
 import {warn} from './console.js';
 
@@ -440,6 +446,14 @@ export function equivalent(projection1, projection2) {
   if (projection1 === projection2) {
     return true;
   }
+  const matrix1 = projection1.getMatrix();
+  const matrix2 = projection2.getMatrix();
+  if (
+    (matrix1 || matrix2) &&
+    (!matrix1 || !matrix2 || !equalsMatrix(matrix1, matrix2))
+  ) {
+    return false;
+  }
   const equalUnits = projection1.getUnits() === projection2.getUnits();
   if (projection1.getCode() === projection2.getCode()) {
     return equalUnits;
@@ -466,6 +480,20 @@ export function getTransformFromProjections(
   let transformFunc = getTransformFunc(sourceCode, destinationCode);
   if (!transformFunc) {
     transformFunc = identityTransform;
+  }
+  let sourceMatrix = sourceProjection.getMatrix();
+  let destinationMatrix = destinationProjection.getMatrix();
+  if (sourceMatrix || destinationMatrix) {
+    const transform = transformFunc;
+    sourceMatrix = invertMatrix((sourceMatrix || createMatrix()).slice());
+    destinationMatrix = destinationMatrix || createMatrix();
+    const coordTransform = function (coordinate) {
+      return applyMatrix(
+        destinationMatrix,
+        transform(applyMatrix(sourceMatrix, coordinate.slice())),
+      );
+    };
+    transformFunc = createTransformFromCoordinateTransform(coordTransform);
   }
   return transformFunc;
 }
