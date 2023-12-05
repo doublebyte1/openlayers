@@ -124,6 +124,49 @@ function getWorkerPool() {
 }
 
 /**
+ * Replacement for GeoTIFFImage.getResolution() to handle ModelTransformation.
+ * @param {GeoTIFFImage} image The image.
+ * @param {GeoTIFFImage} [referenceImage] The reference image.
+ * @return {Array<number>} The map x and y units per pixel.
+ */
+function getResolution(image, referenceImage) {
+  const modelPixelScale = image.fileDirectory.ModelPixelScale;
+  const modelTransformation = image.fileDirectory.ModelTransformation;
+  if (modelPixelScale) {
+    return [modelPixelScale[0], -modelPixelScale[1], modelPixelScale[2]];
+  }
+  if (modelTransformation) {
+    if (modelTransformation[1] === 0 && modelTransformation[4] === 0) {
+      return [
+        modelTransformation[0],
+        -modelTransformation[5],
+        modelTransformation[10],
+      ];
+    }
+    return [
+      Math.sqrt(
+        modelTransformation[0] * modelTransformation[0] +
+          modelTransformation[4] * modelTransformation[4],
+      ),
+      -Math.sqrt(
+        modelTransformation[1] * modelTransformation[1] +
+          modelTransformation[5] * modelTransformation[5],
+      ),
+      modelTransformation[10],
+    ];
+  }
+  if (referenceImage) {
+    const [refResX, refResY, refResZ] = getResolution(referenceImage);
+    return [
+      (refResX * referenceImage.getWidth()) / image.getWidth(),
+      (refResY * referenceImage.getHeight()) / image.getHeight(),
+      (refResZ * referenceImage.getWidth()) / image.getWidth(),
+    ];
+  }
+  throw new Error('The image does not have an affine transformation.');
+}
+
+/**
  * Get the bounding box of an image.  If the image does not have an affine transform,
  * the pixel bounds are returned.
  * @param {GeoTIFFImage} image The image.
@@ -131,7 +174,22 @@ function getWorkerPool() {
  */
 function getBoundingBox(image) {
   try {
-    return image.getBoundingBox();
+    const origin = image.getOrigin();
+    //const resolution = image.getResolution();
+    const resolution = getResolution(image);
+
+    const x1 = origin[0];
+    const y1 = origin[1];
+
+    const x2 = x1 + resolution[0] * image.getWidth();
+    const y2 = y1 + resolution[1] * image.getHeight();
+
+    return [
+      Math.min(x1, x2),
+      Math.min(y1, y2),
+      Math.max(x1, x2),
+      Math.max(y1, y2),
+    ];
   } catch (_) {
     return [0, 0, image.getWidth(), image.getHeight()];
   }
@@ -160,7 +218,8 @@ function getOrigin(image) {
  */
 function getResolutions(image, referenceImage) {
   try {
-    return image.getResolution(referenceImage);
+    //return image.getResolution(referenceImage);
+    return getResolution(image, referenceImage);
   } catch (_) {
     return [
       referenceImage.getWidth() / image.getWidth(),
